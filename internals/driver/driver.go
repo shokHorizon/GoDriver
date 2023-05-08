@@ -3,9 +3,7 @@ package driver
 import (
 	"context"
 	"errors"
-	"strconv"
 
-	"github.com/howeyc/crc16"
 	"github.com/shokHorizon/GoDriver/internals/config"
 	"github.com/shokHorizon/GoDriver/internals/driver/command"
 	"github.com/shokHorizon/GoDriver/internals/driver/connector"
@@ -34,28 +32,94 @@ func (d *Device) SetTare(ctx context.Context) (string, error) {
 	return "Команда не поддерживается", nil
 }
 
-func (d *Device) SetTareValue(ctx context.Context, val int32) (string, error) {
-	b := command.SetTareBody{
-		Code: command.CMD_SET_TARE,
-		Tare: val,
+func (d *Device) SetTareValue(ctx context.Context, val [4]byte) (string, error) {
+	h := command.NewSetTareHead(val)
+	err := h.Write(d.Conn)
+	if err != nil {
+		return "", err
 	}
-	msg := command.Head{
-		Headers: command.HEADERS,
-		Len:     int16(5),
-	}
-	d.Conn.Write(msg.Headers[:])
-	d.Conn.Write([]byte(string(msg.Len)))
-	d.Conn.Write([]byte(string(b.Code)))
-	d.Conn.Write([]byte(string(b.Tare)))
-	d.Conn.Write([]byte(string(crc16.Checksum([]byte(string(b.Code)+string(b.Tare)), crc16.CCITTTable))))
 
-	var buf = make([]byte, 256)
-	if n, err := d.Conn.Read(buf); err != nil || n == 0 {
-		return "Соединение потеряно", nil
+	rh, err := command.ReadHead(d.Conn)
+	if err != nil {
+		return "", err
 	}
-	msgCode, _ := strconv.ParseInt(string(buf[5]), 10, 16)
-	if msgCode != command.CMD_ACK_SET_TARE {
-		return "Не удалось установить параметры", nil
+
+	if rh.Message[0] == command.CMD_ACK_SET_TARE {
+		return string(rh.Message), nil
 	}
-	return "", nil
+
+	if rh.Message[0] == command.CMD_ERROR {
+		return command.GetErrorMesage(rh.Message[1]), errors.New("cmd error")
+	}
+
+	return "", errors.New("unknown error")
+}
+
+func (d *Device) SetZero(ctx context.Context) (string, error) {
+	h := command.NewSetZeroHead()
+	err := h.Write(d.Conn)
+	if err != nil {
+		return "", err
+	}
+
+	rh, err := command.ReadHead(d.Conn)
+	if err != nil {
+		return "", err
+	}
+
+	if rh.Message[0] == command.CMD_ACK_SET {
+		return string(rh.Message), nil
+	}
+
+	if rh.Message[0] == command.CMD_ERROR {
+		return command.GetErrorMesage(rh.Message[1]), errors.New("cmd error")
+	}
+
+	return "", errors.New("unknown error")
+}
+
+func (d *Device) GetInstantWeight(ctx context.Context) (string, error) {
+	h := command.NewGetInstantWeightHead()
+	err := h.Write(d.Conn)
+	if err != nil {
+		return "", err
+	}
+
+	rh, err := command.ReadHead(d.Conn)
+	if err != nil {
+		return "", err
+	}
+
+	if rh.Message[0] == command.CMD_ACK_MASSA {
+		return string(rh.Message), nil
+	}
+
+	if rh.Message[0] == command.CMD_ERROR {
+		return command.GetErrorMesage(rh.Message[1]), errors.New("cmd error")
+	}
+
+	return "", errors.New("unknown error")
+}
+
+func (d *Device) GetScalePar(ctx context.Context) (string, error) {
+	h := command.NewGetScaleHead()
+	err := h.Write(d.Conn)
+	if err != nil {
+		return "", err
+	}
+
+	rh, err := command.ReadHead(d.Conn)
+	if err != nil {
+		return "", err
+	}
+
+	if rh.Message[0] == command.CMD_ACK_SCALE_PAR {
+		return string(rh.Message), nil
+	}
+
+	if rh.Message[0] == command.CMD_ERROR {
+		return command.GetErrorMesage(rh.Message[1]), errors.New("cmd error")
+	}
+
+	return "", errors.New("unknown error")
 }
